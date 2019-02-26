@@ -37,7 +37,6 @@ module Money::RatesStore
     # @yieldparam iso_from [String] Currency ISO string.
     # @yieldparam iso_to [String] Currency ISO string.
     # @yieldparam rate [Numeric] Exchange rate.
-    # @yieldparam date [Date] Historical date for the exchange rate. Nil if the rate is not historical rate.
     #
     # @return [Enumerator]
     #
@@ -50,7 +49,7 @@ module Money::RatesStore
         index.each do |key, rate|
           iso_from, iso_to = key.split(Memory::INDEX_KEY_SEPARATOR)
           iso_to, date = iso_to.split(INDEX_DATE_SEPARATOR)
-          date = Date.parse(date) if date
+          date = Date.parse(date)
           yielder.yield iso_from, iso_to, rate, date
         end
       end
@@ -60,9 +59,9 @@ module Money::RatesStore
 
     private
 
-      def rate_key_for(currency_iso_from, currency_iso_to, date = nil)
+      def rate_key_for(currency_iso_from, currency_iso_to, date)
         key = [currency_iso_from, currency_iso_to].join(Memory::INDEX_KEY_SEPARATOR)
-        key = [key, date.to_s].join(INDEX_DATE_SEPARATOR) if date
+        key = [key, date.to_s].join(INDEX_DATE_SEPARATOR)
         key.upcase
       end
   end

@@ -1,19 +1,25 @@
 require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 require 'yaml'
+require 'pry'
 
-describe "EuCentralBank" do
-  before(:each) do
+describe EuCentralBank do
+  let(:current_date) { Date.new(2018, 06, 11) }
+  let(:historical_date) { Date.new(2018, 03, 14) }
+
+  before do
     @bank = EuCentralBank.new
     @dir_path = File.dirname(__FILE__)
-    @cache_path = File.expand_path(@dir_path + '/exchange_rates.xml')
-    @history_cache_path = File.expand_path(@dir_path + '/exchange_rates_90_day.xml')
+
+    @current_exchange_rates_xml = File.expand_path(@dir_path + '/fixtures/current_exchange_rates.xml')
+    @historical_exchange_rate_xml = File.expand_path(@dir_path + '/fixtures/historical_exchange_rates.xml')
+
     @tmp_cache_path = File.expand_path(@dir_path + '/tmp/exchange_rates.xml')
     @tmp_history_cache_path = File.expand_path(@dir_path + '/tmp/exchange_rates_90_day.xml')
     yml_cache_path = File.expand_path(@dir_path + '/exchange_rates.yml')
     @exchange_rates = YAML.load_file(yml_cache_path)
   end
 
-  after(:each) do
+  after do
     [@tmp_cache_path, @tmp_history_cache_path].each do |file_name|
       if File.exist? file_name
         File.delete file_name
@@ -21,59 +27,54 @@ describe "EuCentralBank" do
     end
   end
 
-  it "should save the xml file from ecb given a file path" do
-    @bank.save_rates(@tmp_cache_path)
-    expect(File.exist?(@tmp_cache_path)).to eq(true)
-  end
+  describe 'should update itself with exchange rates from ecb website' do
+    it 'requests timeframe current' do
+      stub_const('EuCentralBank::ECB_RATES_URL', @current_exchange_rates_xml)
+      @bank.update_exchange_rates(timeframe: :current)
+      EuCentralBank::CURRENCIES.each do |currency|
+        expect(@bank.get_rate('EUR', currency, current_date)).to be_a(BigDecimal)
+      end
+    end
 
-  it "should save the xml file from ecb given a file path and url" do
-    @bank.save_rates(@tmp_history_cache_path, EuCentralBank::ECB_90_DAY_URL)
-    expect(File.exist?(@tmp_history_cache_path)).to eq(true)
-  end
+    it 'requests timeframe last_90_days' do
+      stub_const('EuCentralBank::ECB_90_DAY_URL', @historical_exchange_rate_xml)
+      @bank.update_exchange_rates(timeframe: :last_90_days)
+      EuCentralBank::CURRENCIES.each do |currency|
+        expect(@bank.get_rate('EUR', currency, historical_date)).to be_a(BigDecimal)
+      end
+    end
 
-  it "should raise an error if an invalid path is given to save_rates" do
-    expect { @bank.save_rates(nil) }.to raise_exception(InvalidCache)
-  end
+    it 'requests timeframe all' do
+      stub_const('EuCentralBank::ECB_ALL_URL', @historical_exchange_rate_xml)
+      @bank.update_exchange_rates(timeframe: :all)
+      EuCentralBank::CURRENCIES.each do |currency|
+        expect(@bank.get_rate('EUR', currency, historical_date)).to be_a(BigDecimal)
+      end
+    end
 
-  it "should update itself with exchange rates from ecb website" do
-    allow(OpenURI::OpenRead).to receive(:open).with(EuCentralBank::ECB_RATES_URL) {@cache_path}
-    @bank.update_rates
-    EuCentralBank::CURRENCIES.each do |currency|
-      expect(@bank.get_rate("EUR", currency)).to be > 0
+    it 'requests an invalid timeframe' do
+      expect do
+        @bank.update_exchange_rates
+      end.to raise_error(
+        EuCentralBank::Errors::InvalidTimeframe,
+        'Please use :current, :last_90_days or :all'
+      )
     end
   end
 
-  it "should update itself with exchange rates from ecb website when the data get from cache is illegal" do
-    illegal_cache_path = File.expand_path(@dir_path + '/illegal_exchange_rates.xml')
-    allow(OpenURI::OpenRead).to receive(:open).with(EuCentralBank::ECB_RATES_URL) {@cache_path}
-    @bank.update_rates(illegal_cache_path)
+  it 'should update itself with exchange rates from xml file' do
+    @bank.update_exchange_rates(file: @current_exchange_rates_xml)
     EuCentralBank::CURRENCIES.each do |currency|
-      expect(@bank.get_rate("EUR", currency)).to be > 0
-    end
-  end
-
-  it "should update itself with exchange rates from cache" do
-    @bank.update_rates(@cache_path)
-    EuCentralBank::CURRENCIES.each do |currency|
-      expect(@bank.get_rate("EUR", currency)).to be > 0
-    end
-  end
-
-  it "should export to a string a valid cache that can be reread" do
-    allow(OpenURI::OpenRead).to receive(:open).with(EuCentralBank::ECB_RATES_URL) {@cache_path}
-    s = @bank.save_rates_to_s
-    @bank.update_rates_from_s(s)
-    EuCentralBank::CURRENCIES.each do |currency|
-      expect(@bank.get_rate("EUR", currency)).to be > 0
+      expect(@bank.get_rate('EUR', currency, current_date)).to be_a(BigDecimal)
     end
   end
 
   it 'should set last_updated when the rates are downloaded' do
     lu1 = @bank.last_updated
-    @bank.update_rates(@cache_path)
+    @bank.update_exchange_rates(file: @current_exchange_rates_xml)
     lu2 = @bank.last_updated
     sleep(0.01)
-    @bank.update_rates(@cache_path)
+    @bank.update_exchange_rates(file: @current_exchange_rates_xml)
     lu3 = @bank.last_updated
 
     expect(lu1).not_to eq(lu2)
@@ -82,36 +83,17 @@ describe "EuCentralBank" do
 
   it 'should set rates_updated_at when the rates are downloaded' do
     lu1 = @bank.rates_updated_at
-    @bank.update_rates(@cache_path)
+    @bank.update_exchange_rates(file: @current_exchange_rates_xml)
     lu2 = @bank.rates_updated_at
 
     expect(lu1).not_to eq(lu2)
   end
 
-  it 'should set historical last_updated when the rates are downloaded' do
-    lu1 = @bank.historical_last_updated
-    @bank.update_historical_rates(@history_cache_path)
-    lu2 = @bank.historical_last_updated
-    @bank.update_historical_rates(@history_cache_path)
-    lu3 = @bank.historical_last_updated
-
-    expect(lu1).not_to eq(lu2)
-    expect(lu2).not_to eq(lu3)
-  end
-
-  it 'should set rates_updated_at when the rates are downloaded' do
-    lu1 = @bank.historical_rates_updated_at
-    @bank.update_historical_rates(@history_cache_path)
-    lu2 = @bank.historical_rates_updated_at
-
-    expect(lu1).not_to eq(lu2)
-  end
-
   it "should return the correct exchange rates using exchange" do
-    @bank.update_rates(@cache_path)
+    @bank.update_exchange_rates(file: @current_exchange_rates_xml)
     EuCentralBank::CURRENCIES.each do |currency|
       subunit_to_unit  = Money::Currency.wrap(currency).subunit_to_unit
-      exchanged_amount = @bank.exchange(100, "EUR", currency)
+      exchanged_amount = @bank.exchange(100, "EUR", currency, current_date)
       expect(exchanged_amount.cents).to eq((@exchange_rates["currencies"][currency] * subunit_to_unit).round(0).to_i)
     end
   end
@@ -120,23 +102,17 @@ describe "EuCentralBank" do
     let(:money) { Money.new(100, 'EUR') }
 
     it 'should return the correct exchange rates using exchange_with' do
-      @bank.update_rates(@cache_path)
+      @bank.update_exchange_rates(file: @current_exchange_rates_xml)
       EuCentralBank::CURRENCIES.each do |currency|
         subunit_to_unit  = Money::Currency.wrap(currency).subunit_to_unit
         amount_from_rate = (@exchange_rates["currencies"][currency] * subunit_to_unit).round(0).to_i
 
-        expect(@bank.exchange_with(Money.new(100, "EUR"), currency).cents).to eq(amount_from_rate)
+        expect(@bank.exchange_with(Money.new(100, "EUR"), currency, current_date).cents).to eq(amount_from_rate)
       end
     end
 
-    it 'raises Money::Bank::UnknownRate if rates are not available' do
-      expect do
-        @bank.exchange_with(money, 'USD')
-      end.to raise_error(Money::Bank::UnknownRate, "No conversion rate known for 'EUR' -> 'USD'")
-    end
-
     it 'raises Money::Bank::UnknownRate if rates for a specific date are not available' do
-      ['2017-02-22', Date.new(2017, 2, 22)].each do |date|
+      ['2017-02-22', Date.new(2017, 02, 22)].each do |date|
         expect do
           @bank.exchange_with(money, 'USD', date)
         end.to raise_error(Money::Bank::UnknownRate, "No conversion rate known for 'EUR' -> 'USD' on 2017-02-22")
@@ -144,11 +120,11 @@ describe "EuCentralBank" do
     end
   end
 
-
-  it "should return the correct exchange rates using historical exchange" do
+  it "should return the correct exchange rates using last 90 days exchange rates" do
     yml_path = File.expand_path(File.dirname(__FILE__) + '/historical_exchange_rates.yml')
     historical_exchange_rates = YAML.load_file(yml_path)
-    @bank.update_historical_rates(@history_cache_path)
+
+    @bank.update_exchange_rates(file: @historical_exchange_rate_xml)
 
     EuCentralBank::CURRENCIES.each do |currency|
       subunit_to_unit  = Money::Currency.wrap(currency).subunit_to_unit
@@ -157,29 +133,28 @@ describe "EuCentralBank" do
     end
   end
 
-  it "should update update_rates atomically" do
+  it "should #update_parsed_rates atomically" do
     even_rates = File.expand_path(File.dirname(__FILE__) + '/even_exchange_rates.xml')
     odd_rates = File.expand_path(File.dirname(__FILE__) + '/odd_exchange_rates.xml')
 
     odd_thread = Thread.new do
-      while true; @bank.update_rates(odd_rates); end
+      while true; @bank.update_exchange_rates(file: odd_rates); end
     end
 
     even_thread = Thread.new do
-      while true;  @bank.update_rates(even_rates); end
+      while true; @bank.update_exchange_rates(file: even_rates); end
     end
 
     # Updating bank rates so that we're sure the test won't fail prematurely
     # (i.e. even without odd_thread/even_thread getting a change to run)
-    @bank.update_rates(odd_rates)
+    @bank.update_exchange_rates(file: odd_rates)
 
     10.times do
       rates = YAML.load(@bank.export_rates(:yaml))
-      rates.delete('EUR_TO_EUR')
-      rates = rates.values.collect(&:to_i)
-      expect(rates.length).to eq(34)
+      rates = rates.values[0].map{ |hash| hash[:rate].to_i }
+      expect(rates.length).to eq(31)
       expect(rates).to satisfy { |rts|
-        rts.all?(&:even?) or rts.all?(&:odd?)
+        rts.all?(&:even?) || rts.all?(&:odd?)
       }
     end
     even_thread.kill
@@ -189,7 +164,9 @@ describe "EuCentralBank" do
   describe 'export / import rates' do
     let(:other_bank) { EuCentralBank.new }
 
-    before { @bank.update_rates(@cache_path) }
+    before do
+      @bank.update_exchange_rates(file: @current_exchange_rates_xml)
+    end
 
     it 're-imports JSON' do
       raw_rates = @bank.export_rates(:json)
@@ -229,44 +206,43 @@ describe "EuCentralBank" do
     odd_rates = File.expand_path(File.dirname(__FILE__) + '/odd_exchange_rates.xml')
 
     odd_thread = Thread.new do
-      while true; @bank.update_rates(odd_rates); end
+      while true; @bank.update_exchange_rates(file: odd_rates); end
     end
 
     even_thread = Thread.new do
-      while true;  @bank.update_rates(even_rates); end
+      while true; @bank.update_exchange_rates(file: even_rates); end
     end
 
     # Updating bank rates so that we're sure the test won't fail prematurely
     # (i.e. even without odd_thread/even_thread getting a change to run)
-    @bank.update_rates(odd_rates)
+    @bank.update_exchange_rates(file: odd_rates)
 
     10.times do
-      expect(@bank.exchange(100, 'INR', 'INR').fractional).to eq(100)
+      expect(@bank.exchange(100, 'INR', 'INR', Date.new(2010, 04, 20)).fractional).to eq(100)
     end
     even_thread.kill
     odd_thread.kill
   end
 
   it "should raise an error when currency is not available in currency list" do
-    expect { @bank.get_rate(EuCentralBank::CURRENCIES.first,"CLP")}.to raise_exception(CurrencyUnavailable)
-    expect { @bank.get_rate("CLP",EuCentralBank::CURRENCIES.first)}.to raise_exception(CurrencyUnavailable)
-    expect { @bank.get_rate("ARG","CLP")}.to raise_exception(CurrencyUnavailable)
-    expect { @bank.get_rate("CLP","ARG")}.to raise_exception(CurrencyUnavailable)
-  end
-
-  it "should return 1 for equivilent rates" do
-    expect(@bank.get_rate('EUR', 'EUR')).to eq(1)
-    expect(@bank.get_rate('AUD', 'AUD')).to eq(1)
+    expect {
+      @bank.get_rate(EuCentralBank::CURRENCIES.first, 'CLP', current_date)
+    }.to raise_exception(EuCentralBank::Errors::CurrencyUnavailable)
+    expect {
+      @bank.get_rate('CLP', EuCentralBank::CURRENCIES.first, current_date)
+    }.to raise_exception(EuCentralBank::Errors::CurrencyUnavailable)
+    expect {
+      @bank.get_rate('ARG', 'CLP', current_date)
+    }.to raise_exception(EuCentralBank::Errors::CurrencyUnavailable)
+    expect {
+      @bank.get_rate('CLP', 'ARG', current_date)
+    }.to raise_exception(EuCentralBank::Errors::CurrencyUnavailable)
   end
 
   it "should not fail when calculating rate from historical base rates" do
-    @bank.update_historical_rates
+    @bank.update_exchange_rates(file: @historical_exchange_rate_xml)
 
-    # A very naive way of finding a weekday because exchange rates
-    # from EU Central Bank are not available on weekends
-    workday = Date.today - 7
-    workday -= 1 if workday.saturday?
-    workday -= 2 if workday.sunday?
+    workday = Date.new(2018, 06, 06)
 
     expect {
       @bank.exchange(100, 'GBP', 'EUR', workday)
