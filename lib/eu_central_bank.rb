@@ -169,10 +169,7 @@ class EuCentralBank < Money::Bank::VariableExchange
     store.transaction true do
       parsed_xml.rates.each do |date, exchange_rates|
         exchange_rates.each do |currency, exchange_rate|
-          unless @requested_currencies.include?(currency)
-            puts currency
-            next
-          end
+          next unless @requested_currencies.include?(currency)
 
           set_rate('EUR', currency, BigDecimal(exchange_rate), date)
         end
