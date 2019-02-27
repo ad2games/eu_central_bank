@@ -1,3 +1,16 @@
+# Warning
+
+This gem was froked from [eu_central_bank](https://github.com/RubyMoney/eu_central_bank/) gem. It contains opinionated changes like:
+
+* speedup xml parsing
+* add historical data endpoint (from 1999 on)
+* initializer takes required currencies like `['EUR', 'USD']` and skips storing the rest
+* `.rates` returns better data structure (useful for export to database)
+* removed the `set_rate("EUR", "EUR", 1)` implementation
+* to ensure data consistency the current exchange rates for today are also returned with a date
+* when `update_exchange_rates` from file fails dont fall back to URL update (seems missleading and might introduce unintended exchange rates to systems)
+* adjusted and refactored specs to reflect given changes
+
 # eu_central_bank
 
 [![Build Status](https://travis-ci.org/RubyMoney/eu_central_bank.svg?branch=master)](https://travis-ci.org/RubyMoney/eu_central_bank)
