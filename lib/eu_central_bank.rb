@@ -14,8 +14,8 @@ class EuCentralBank < Money::Bank::VariableExchange
   ECB_90_DAY_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist-90d.xml'.freeze
   ECB_ALL_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.xml'.freeze
 
-  def initialize(st = Money::RatesStore::StoreWithHistoricalDataSupport.new, currencies: EuCentralBank::CURRENCIES, &block)
-    super(st, &block)
+  def initialize(store = Money::RatesStore::StoreWithHistoricalDataSupport.new, currencies: EuCentralBank::CURRENCIES, &block)
+    super(store, &block)
 
     @requested_currencies = currencies
     @currency_string = nil
@@ -96,9 +96,17 @@ class EuCentralBank < Money::Bank::VariableExchange
     end
   end
 
+  def save_rates(file_path, url=ECB_RATES_URL)
+    raise Errors::InvalidFilePath unless file_path
+
+    File.open(file_path, 'w') do |file|
+      io = open(url)
+      io.each_line { |line| file.puts line }
+    end
+  end
+
   def export_rates(format, opts = {})
-    raise Money::Bank::UnknownRateFormat unless
-      RATE_FORMATS.include? format
+    raise Money::Bank::UnknownRateFormat unless RATE_FORMATS.include? format
 
     store.transaction true do
       case format
@@ -113,18 +121,17 @@ class EuCentralBank < Money::Bank::VariableExchange
   end
 
   def import_rates(format, s, opts = {})
-    raise Money::Bank::UnknownRateFormat unless
-      RATE_FORMATS.include? format
+    raise Money::Bank::UnknownRateFormat unless RATE_FORMATS.include? format
 
     store.transaction true do
       data = case format
-       when :json
-         JSON.parse(s, symbolize_names: true)
-       when :ruby
-         Marshal.load(s)
-       when :yaml
-         YAML.load(s)
-       end
+      when :json
+        JSON.parse(s, symbolize_names: true)
+      when :ruby
+        Marshal.load(s)
+      when :yaml
+        YAML.load(s)
+      end
 
       data.each do |date, exchange_rates|
         exchange_rates.each do |exchange_rate|

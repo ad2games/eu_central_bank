@@ -59,10 +59,10 @@ module Money::RatesStore
 
     private
 
-      def rate_key_for(currency_iso_from, currency_iso_to, date)
-        key = [currency_iso_from, currency_iso_to].join(Memory::INDEX_KEY_SEPARATOR)
-        key = [key, date.to_s].join(INDEX_DATE_SEPARATOR)
-        key.upcase
-      end
+    def rate_key_for(currency_iso_from, currency_iso_to, date)
+      key = [currency_iso_from, currency_iso_to].join(Memory::INDEX_KEY_SEPARATOR)
+      key = [key, date.to_s].join(INDEX_DATE_SEPARATOR)
+      key.upcase
+    end
   end
 end
