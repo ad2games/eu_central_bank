@@ -192,7 +192,7 @@ describe EuCentralBank do
     bank.update_exchange_rates(file: odd_exchange_rates)
 
     10.times do
-      rates = YAML.safe_load(bank.export_rates(:yaml))
+      rates = YAML.load(bank.export_rates(:yaml))
       rates = rates.values[0].map { |hash| hash[:rate].to_i }
       expect(rates.length).to eq(31)
       expect(rates).to satisfy { |rts|
