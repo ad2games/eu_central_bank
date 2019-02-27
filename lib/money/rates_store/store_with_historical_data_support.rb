@@ -11,7 +11,7 @@ module Money::RatesStore
     end
 
     # Wraps block execution in a thread-safe transaction
-    def transaction(force_sync = false, &block)
+    def transaction(force_sync = false)
       # Ruby 1.9.3 does not support @mutex.owned?
       if @mutex.respond_to?(:owned?)
         force_sync = false if @mutex.locked? && @mutex.owned?
@@ -21,11 +21,11 @@ module Money::RatesStore
         force_sync = false
       end
       if !force_sync && (@in_transaction || options[:without_mutex])
-        block.call self
+        yield self
       else
         @mutex.synchronize do
           @in_transaction = true
-          result = block.call
+          result = yield
           @in_transaction = false
           result
         end

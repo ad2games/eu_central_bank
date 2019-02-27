@@ -9,7 +9,7 @@ class EuCentralBank < Money::Bank::VariableExchange
   attr_accessor :last_updated
   attr_accessor :rates_updated_at
 
-  CURRENCIES = %w(USD JPY BGN CZK DKK GBP HUF ILS ISK PLN RON SEK CHF NOK HRK RUB TRY AUD BRL CAD CNY HKD IDR INR KRW MXN MYR NZD PHP SGD THB ZAR).map(&:freeze).freeze
+  CURRENCIES = %w[USD JPY BGN CZK DKK GBP HUF ILS ISK PLN RON SEK CHF NOK HRK RUB TRY AUD BRL CAD CNY HKD IDR INR KRW MXN MYR NZD PHP SGD THB ZAR].map(&:freeze).freeze
   ECB_RATES_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'.freeze
   ECB_90_DAY_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist-90d.xml'.freeze
   ECB_ALL_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.xml'.freeze
@@ -47,7 +47,8 @@ class EuCentralBank < Money::Bank::VariableExchange
   end
 
   def exchange_with(from, to_currency, date)
-    from_base_rate, to_base_rate = nil, nil
+    from_base_rate = nil
+    to_base_rate = nil
     rate = get_rate(from.currency, to_currency, date)
 
     unless rate
@@ -57,8 +58,8 @@ class EuCentralBank < Money::Bank::VariableExchange
       end
 
       unless from_base_rate && to_base_rate
-        raise Money::Bank::UnknownRate, "No conversion rate known for " \
-          "'#{from.currency.iso_code}' -> '#{to_currency}' on #{date.to_s}"
+        raise Money::Bank::UnknownRate, 'No conversion rate known for ' \
+          "'#{from.currency.iso_code}' -> '#{to_currency}' on #{date}"
       end
 
       rate = to_base_rate / from_base_rate
@@ -96,7 +97,7 @@ class EuCentralBank < Money::Bank::VariableExchange
     end
   end
 
-  def save_rates(file_path, url=ECB_RATES_URL)
+  def save_rates(file_path, url = ECB_RATES_URL)
     raise Errors::InvalidFilePath unless file_path
 
     File.open(file_path, 'w') do |file|
@@ -105,7 +106,7 @@ class EuCentralBank < Money::Bank::VariableExchange
     end
   end
 
-  def export_rates(format, opts = {})
+  def export_rates(format, _opts = {})
     raise Money::Bank::UnknownRateFormat unless RATE_FORMATS.include? format
 
     store.transaction true do
@@ -120,17 +121,17 @@ class EuCentralBank < Money::Bank::VariableExchange
     end
   end
 
-  def import_rates(format, s, opts = {})
+  def import_rates(format, s, _opts = {})
     raise Money::Bank::UnknownRateFormat unless RATE_FORMATS.include? format
 
     store.transaction true do
       data = case format
-      when :json
-        JSON.parse(s, symbolize_names: true)
-      when :ruby
-        Marshal.load(s)
-      when :yaml
-        YAML.load(s)
+             when :json
+               JSON.parse(s, symbolize_names: true)
+             when :ruby
+               Marshal.load(s)
+             when :yaml
+               YAML.safe_load(s)
       end
 
       data.each do |date, exchange_rates|

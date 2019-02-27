@@ -2,8 +2,8 @@ require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 
 describe EuCentralBank do
   let(:bank) { EuCentralBank.new }
-  let(:current_date) { Date.new(2018, 06, 11) }
-  let(:historical_date) { Date.new(2018, 03, 14) }
+  let(:current_date) { Date.new(2018, 6, 11) }
+  let(:historical_date) { Date.new(2018, 3, 14) }
 
   let(:dir_path) { File.dirname(__FILE__) }
 
@@ -40,9 +40,7 @@ describe EuCentralBank do
 
   after do
     [tmp_current_exchange_rates_xml_path, tmp_historical_exchange_rate_xml_path].each do |path|
-      if File.exist?(path)
-        File.delete(path)
-      end
+      File.delete(path) if File.exist?(path)
     end
   end
 
@@ -137,9 +135,9 @@ describe EuCentralBank do
 
     EuCentralBank::CURRENCIES.each do |currency|
       subunit_to_unit  = Money::Currency.wrap(currency).subunit_to_unit
-      exchanged_amount = bank.exchange(100, "EUR", currency, current_date)
+      exchanged_amount = bank.exchange(100, 'EUR', currency, current_date)
       expect(exchanged_amount.cents).to eq(
-        (current_exchange_rates["currencies"][currency] * subunit_to_unit).round(0).to_i
+        (current_exchange_rates['currencies'][currency] * subunit_to_unit).round(0).to_i
       )
     end
   end
@@ -159,7 +157,7 @@ describe EuCentralBank do
     end
 
     it 'raises Money::Bank::UnknownRate if rates for a specific date are not available' do
-      ['2017-02-22', Date.new(2017, 02, 22)].each do |date|
+      ['2017-02-22', Date.new(2017, 2, 22)].each do |date|
         expect do
           bank.exchange_with(money, 'USD', date)
         end.to raise_error(Money::Bank::UnknownRate, "No conversion rate known for 'EUR' -> 'USD' on 2017-02-22")
@@ -182,11 +180,11 @@ describe EuCentralBank do
 
   it 'updates parsed rates atomically' do
     odd_thread = Thread.new do
-      while true; bank.update_exchange_rates(file: odd_exchange_rates); end
+      loop { ; bank.update_exchange_rates(file: odd_exchange_rates); }
     end
 
     even_thread = Thread.new do
-      while true; bank.update_exchange_rates(file: even_exchange_rates); end
+      loop { ; bank.update_exchange_rates(file: even_exchange_rates); }
     end
 
     # Updating bank rates so that we're sure the test won't fail prematurely
@@ -194,8 +192,8 @@ describe EuCentralBank do
     bank.update_exchange_rates(file: odd_exchange_rates)
 
     10.times do
-      rates = YAML.load(bank.export_rates(:yaml))
-      rates = rates.values[0].map{ |hash| hash[:rate].to_i }
+      rates = YAML.safe_load(bank.export_rates(:yaml))
+      rates = rates.values[0].map { |hash| hash[:rate].to_i }
       expect(rates.length).to eq(31)
       expect(rates).to satisfy { |rts|
         rts.all?(&:even?) || rts.all?(&:odd?)
@@ -234,7 +232,6 @@ describe EuCentralBank do
     end
   end
 
-
   it 'exchanges money atomically' do
     # NOTE: We need to introduce an artificial delay in the core get_rate
     # function, otherwise it will take a lot of iterations to hit some sort or
@@ -248,11 +245,11 @@ describe EuCentralBank do
     end
 
     odd_thread = Thread.new do
-      while true; bank.update_exchange_rates(file: odd_exchange_rates); end
+      loop { ; bank.update_exchange_rates(file: odd_exchange_rates); }
     end
 
     even_thread = Thread.new do
-      while true; bank.update_exchange_rates(file: even_exchange_rates); end
+      loop { ; bank.update_exchange_rates(file: even_exchange_rates); }
     end
 
     # Updating bank rates so that we're sure the test won't fail prematurely
@@ -260,7 +257,7 @@ describe EuCentralBank do
     bank.update_exchange_rates(file: odd_exchange_rates)
 
     10.times do
-      expect(bank.exchange(100, 'INR', 'INR', Date.new(2010, 04, 20)).fractional).to eq(100)
+      expect(bank.exchange(100, 'INR', 'INR', Date.new(2010, 4, 20)).fractional).to eq(100)
     end
 
     even_thread.kill
@@ -268,31 +265,31 @@ describe EuCentralBank do
   end
 
   it 'raises an error when currency is not available in currency list' do
-    expect {
+    expect do
       bank.get_rate(EuCentralBank::CURRENCIES.first, 'CLP', current_date)
-    }.to raise_exception(EuCentralBank::Errors::CurrencyUnavailable)
-    expect {
+    end.to raise_exception(EuCentralBank::Errors::CurrencyUnavailable)
+    expect do
       bank.get_rate('CLP', EuCentralBank::CURRENCIES.first, current_date)
-    }.to raise_exception(EuCentralBank::Errors::CurrencyUnavailable)
-    expect {
+    end.to raise_exception(EuCentralBank::Errors::CurrencyUnavailable)
+    expect do
       bank.get_rate('ARG', 'CLP', current_date)
-    }.to raise_exception(EuCentralBank::Errors::CurrencyUnavailable)
-    expect {
+    end.to raise_exception(EuCentralBank::Errors::CurrencyUnavailable)
+    expect do
       bank.get_rate('CLP', 'ARG', current_date)
-    }.to raise_exception(EuCentralBank::Errors::CurrencyUnavailable)
+    end.to raise_exception(EuCentralBank::Errors::CurrencyUnavailable)
   end
 
   it 'does not fail when calculating rate from historical base rates' do
     bank.update_exchange_rates(file: historical_exchange_rate_xml_path)
 
-    workday = Date.new(2018, 06, 06)
+    workday = Date.new(2018, 6, 6)
 
     expect { bank.exchange(100, 'GBP', 'EUR', workday) }.not_to raise_error
   end
 
-	it 'accepts a different store' do
-		store = double
-		bank = EuCentralBank.new(store)
+  it 'accepts a different store' do
+    store = double
+    bank = EuCentralBank.new(store)
     expect(bank.store).to eq store
-	end
+  end
 end

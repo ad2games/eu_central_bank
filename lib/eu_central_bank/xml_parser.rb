@@ -9,7 +9,7 @@ class EuCentralBank < Money::Bank::VariableExchange
       @current_date = nil
     end
 
-    def start_element(name, attributes=[])
+    def start_element(name, attributes = [])
       return if name != 'Cube' || attributes.empty?
 
       first_name, first_value = attributes[0]
