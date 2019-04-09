@@ -15,17 +15,21 @@ jobs:
 
       - restore_cache:
           keys:
-            - v1-dependencies-{{ checksum "eu_central_bank.gemspec" }}
+            - gem-cache-{{ checksum "eu_central_bank.gemspec" }}
 
       - run:
-          name: install dependencies
-          command: |
-            bundle install --jobs=4 --retry=3
+          name: Install dependencies
+          command: bundle check || bundle install --jobs=4 --retry=3
 
       - save_cache:
-          key: v1-dependencies-{{ checksum "eu_central_bank.gemspec" }}
+          key: gem-cache-{{ checksum "eu_central_bank.gemspec" }}
           paths:
             - vendor/bundle
+
+      - persist_to_workspace:
+          root: .
+          paths:
+            - .
 
   lint:
     docker: *docker
@@ -38,7 +42,11 @@ jobs:
 
   test:
     docker: *docker
+
     steps:
+      - attach_workspace:
+          at: .
+
       - run:
           name: run tests
           command: |
@@ -56,6 +64,24 @@ jobs:
 workflows:
   version: 2
   lint-and-test:
+    jobs:
+      - setup
+      - lint:
+          requires:
+            - setup
+      - test:
+          requires:
+            - setup
+
+  nightly:
+    triggers:
+      - schedule:
+          cron: "0 0 * * 2"
+          filters:
+            branches:
+              only:
+                - master
+
     jobs:
       - setup
       - lint:
