@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class EuCentralBank < Money::Bank::VariableExchange
   module Errors
     class CurrencyUnavailable < StandardError; end

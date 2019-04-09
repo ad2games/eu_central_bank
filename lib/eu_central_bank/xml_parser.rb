@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class EuCentralBank < Money::Bank::VariableExchange
   class XmlParser < Nokogiri::XML::SAX::Document
     attr_reader :rates
@@ -9,6 +11,7 @@ class EuCentralBank < Money::Bank::VariableExchange
       @current_date = nil
     end
 
+    # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
     def start_element(name, attributes = [])
       return if name != 'Cube' || attributes.empty?
 
@@ -27,6 +30,7 @@ class EuCentralBank < Money::Bank::VariableExchange
     rescue StandardError => e
       raise Nokogiri::XML::XPath::SyntaxError, e.message
     end
+    # rubocop:enable Metrics/MethodLength, Metrics/AbcSize
 
     def end_document
       raise EuCentralBank::Errors::FileContentMissing if @rates.empty? || @updated_at.nil?

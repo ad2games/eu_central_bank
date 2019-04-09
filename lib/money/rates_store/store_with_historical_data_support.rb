@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 module Money::RatesStore
   class StoreWithHistoricalDataSupport < Money::RatesStore::Memory
-    INDEX_DATE_SEPARATOR = '_AT_'.freeze
+    INDEX_DATE_SEPARATOR = '_AT_'
 
     def add_rate(currency_iso_from, currency_iso_to, rate, date = nil)
       transaction { index[rate_key_for(currency_iso_from, currency_iso_to, date)] = rate }
@@ -11,15 +13,10 @@ module Money::RatesStore
     end
 
     # Wraps block execution in a thread-safe transaction
+    # rubocop:disable Metrics/MethodLength
     def transaction(force_sync = false)
-      # Ruby 1.9.3 does not support @mutex.owned?
-      if @mutex.respond_to?(:owned?)
-        force_sync = false if @mutex.locked? && @mutex.owned?
-      else
-        # If we allowed this in Ruby 1.9.3, it might possibly cause recursive
-        # locking within the same thread.
-        force_sync = false
-      end
+      force_sync = false if @mutex.locked? && @mutex.owned?
+
       if !force_sync && (@in_transaction || options[:without_mutex])
         yield self
       else
@@ -31,6 +28,7 @@ module Money::RatesStore
         end
       end
     end
+    # rubocop:enable Metrics/MethodLength
 
     # Iterate over rate tuples (iso_from, iso_to, rate)
     #

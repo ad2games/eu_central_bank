@@ -7,14 +7,16 @@ require 'money/rates_store/store_with_historical_data_support'
 require 'eu_central_bank/errors'
 require 'eu_central_bank/xml_parser'
 
+# rubocop:disable Metrics/ClassLength
 class EuCentralBank < Money::Bank::VariableExchange
   attr_accessor :last_updated
   attr_accessor :rates_updated_at
 
-  CURRENCIES = %w[USD JPY BGN CZK DKK GBP HUF ILS ISK PLN RON SEK CHF NOK HRK RUB TRY AUD BRL CAD CNY HKD IDR INR KRW MXN MYR NZD PHP SGD THB ZAR].map(&:freeze).freeze
-  ECB_RATES_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'.freeze
-  ECB_90_DAY_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist-90d.xml'.freeze
-  ECB_ALL_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.xml'.freeze
+  CURRENCIES = %w[USD JPY BGN CZK DKK GBP HUF ILS ISK PLN RON SEK CHF NOK HRK RUB TRY AUD BRL CAD
+                  CNY HKD IDR INR KRW MXN MYR NZD PHP SGD THB ZAR].map(&:freeze).freeze
+  ECB_RATES_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'
+  ECB_90_DAY_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist-90d.xml'
+  ECB_ALL_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.xml'
 
   def initialize(store = nil, currencies: nil, &block)
     store      ||= Money::RatesStore::StoreWithHistoricalDataSupport.new
@@ -51,6 +53,7 @@ class EuCentralBank < Money::Bank::VariableExchange
     exchange_with(Money.new(cents, from_currency), to_currency, date)
   end
 
+  # rubocop:disable Metrics/MethodLength
   def exchange_with(from, to_currency, date)
     from_base_rate = nil
     to_base_rate = nil
@@ -72,6 +75,7 @@ class EuCentralBank < Money::Bank::VariableExchange
 
     calculate_exchange(from, to_currency, rate)
   end
+  # rubocop:enable Metrics/MethodLength
 
   def get_rate(from, to, date)
     return 1 if from == to
@@ -79,20 +83,26 @@ class EuCentralBank < Money::Bank::VariableExchange
     check_currency_available(from)
     check_currency_available(to)
 
-    if date.is_a?(Hash)
-      # Backwards compatibility for the opts hash
-      date = date[:date]
-    end
+    # Backwards compatibility for the opts hash
+    date = date[:date] if date.is_a?(Hash)
 
-    store.get_rate(::Money::Currency.wrap(from).iso_code, ::Money::Currency.wrap(to).iso_code, date)
+    store.get_rate(
+      ::Money::Currency.wrap(from).iso_code,
+      ::Money::Currency.wrap(to).iso_code,
+      date
+    )
   end
 
   def set_rate(from, to, rate, date)
-    if date.is_a?(Hash)
-      # Backwards compatibility for the opts hash
-      date = date[:date]
-    end
-    store.add_rate(::Money::Currency.wrap(from).iso_code, ::Money::Currency.wrap(to).iso_code, rate, date)
+    # Backwards compatibility for the opts hash
+    date = date[:date] if date.is_a?(Hash)
+
+    store.add_rate(
+      ::Money::Currency.wrap(from).iso_code,
+      ::Money::Currency.wrap(to).iso_code,
+      rate,
+      date
+    )
   end
 
   def rates
@@ -111,6 +121,7 @@ class EuCentralBank < Money::Bank::VariableExchange
     end
   end
 
+  # rubocop:disable Metrics/MethodLength
   def export_rates(format)
     raise Money::Bank::UnknownRateFormat unless RATE_FORMATS.include? format
 
@@ -125,36 +136,18 @@ class EuCentralBank < Money::Bank::VariableExchange
       end
     end
   end
+  # rubocop:enable Metrics/MethodLength
 
   def import_rates(content)
     store.transaction true do
-      parse_content(content).each do |date, exchange_rates|
+      parse_import(content).each do |date, exchange_rates|
         exchange_rates.each do |exchange_rate|
-          store.add_rate(
-            exchange_rate.fetch(:from),
-            exchange_rate.fetch(:to),
-            BigDecimal(exchange_rate.fetch(:rate)),
-            date
-          )
+          update_store(exchange_rate, date)
         end
       end
     end
 
     self
-  end
-
-  def parse_content(content)
-    JSON.parse(content, symbolize_names: true)
-  rescue JSON::ParserError
-    begin
-      YAML.load(content)
-    rescue Psych::SyntaxError
-      begin
-        Marshal.load(content)
-      rescue TypeError
-        raise Money::Bank::UnknownRateFormat
-      end
-    end
   end
 
   def check_currency_available(currency)
@@ -167,6 +160,31 @@ class EuCentralBank < Money::Bank::VariableExchange
   end
 
   protected
+
+  def update_store(exchange_rate, date)
+    store.add_rate(
+      exchange_rate.fetch(:from),
+      exchange_rate.fetch(:to),
+      BigDecimal(exchange_rate.fetch(:rate)),
+      date
+    )
+  end
+
+  # rubocop:disable Metrics/MethodLength
+  def parse_import(content)
+    JSON.parse(content, symbolize_names: true)
+  rescue JSON::ParserError
+    begin
+      YAML.load(content) # rubocop:disable Security/YAMLLoad
+    rescue Psych::SyntaxError
+      begin
+        Marshal.load(content)
+      rescue TypeError
+        raise Money::Bank::UnknownRateFormat
+      end
+    end
+  end
+  # rubocop:enable Metrics/MethodLength
 
   def parse_xml(io)
     parser_document = XmlParser.new
@@ -200,3 +218,4 @@ class EuCentralBank < Money::Bank::VariableExchange
     Money.new(money, to_currency)
   end
 end
+# rubocop:enable Metrics/ClassLength

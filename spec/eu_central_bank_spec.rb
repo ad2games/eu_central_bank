@@ -1,7 +1,9 @@
+# frozen_string_literal: true
+
 require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 
 describe EuCentralBank do
-  let(:bank) { EuCentralBank.new }
+  let(:bank) { described_class.new }
   let(:current_date) { Date.new(2018, 6, 11) }
   let(:historical_date) { Date.new(2018, 3, 14) }
 
@@ -150,7 +152,9 @@ describe EuCentralBank do
 
       EuCentralBank::CURRENCIES.each do |currency|
         subunit_to_unit = Money::Currency.wrap(currency).subunit_to_unit
-        amount_from_rate = (current_exchange_rates['currencies'][currency] * subunit_to_unit).round(0).to_i
+        amount_from_rate = (
+          current_exchange_rates['currencies'][currency] * subunit_to_unit
+        ).round(0).to_i
 
         expect(bank.exchange_with(money, currency, current_date).cents).to eq(amount_from_rate)
       end
@@ -160,7 +164,9 @@ describe EuCentralBank do
       ['2017-02-22', Date.new(2017, 2, 22)].each do |date|
         expect do
           bank.exchange_with(money, 'USD', date)
-        end.to raise_error(Money::Bank::UnknownRate, "No conversion rate known for 'EUR' -> 'USD' on 2017-02-22")
+        end.to raise_error(
+          Money::Bank::UnknownRate, "No conversion rate known for 'EUR' -> 'USD' on 2017-02-22"
+        )
       end
     end
   end
@@ -192,19 +198,19 @@ describe EuCentralBank do
     bank.update_exchange_rates(file: odd_exchange_rates)
 
     10.times do
-      rates = YAML.load(bank.export_rates(:yaml))
+      rates = YAML.load(bank.export_rates(:yaml)) # rubocop:disable Security/YAMLLoad
       rates = rates.values[0].map { |hash| hash[:rate].to_i }
       expect(rates.length).to eq(31)
-      expect(rates).to satisfy { |rts|
+      expect(rates).to(satisfy do |rts|
         rts.all?(&:even?) || rts.all?(&:odd?)
-      }
+      end)
     end
     even_thread.kill
     odd_thread.kill
   end
 
   describe 'export / import rates' do
-    let(:other_bank) { EuCentralBank.new }
+    let(:other_bank) { described_class.new }
 
     before do
       bank.update_exchange_rates(file: current_exchange_rates_xml_path)
@@ -214,21 +220,21 @@ describe EuCentralBank do
       raw_rates = bank.export_rates(:json)
       other_bank.import_rates(raw_rates)
 
-      expect(bank.store.send(:index)).to eq(other_bank.store.send(:index))
+      expect(bank.store.__send__(:index)).to eq(other_bank.store.__send__(:index))
     end
 
     it 're-imports Marshalled ruby' do
       raw_rates = bank.export_rates(:ruby)
       other_bank.import_rates(raw_rates)
 
-      expect(bank.store.send(:index)).to eq(other_bank.store.send(:index))
+      expect(bank.store.__send__(:index)).to eq(other_bank.store.__send__(:index))
     end
 
     it 're-imports YAML' do
       raw_rates = bank.export_rates(:yaml)
       other_bank.import_rates(raw_rates)
 
-      expect(bank.store.send(:index)).to eq(other_bank.store.send(:index))
+      expect(bank.store.__send__(:index)).to eq(other_bank.store.__send__(:index))
     end
   end
 
@@ -289,7 +295,7 @@ describe EuCentralBank do
 
   it 'accepts a different store' do
     store = double
-    bank = EuCentralBank.new(store)
+    bank = described_class.new(store)
     expect(bank.store).to eq store
   end
 end
