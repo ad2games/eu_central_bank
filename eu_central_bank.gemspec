@@ -18,6 +18,7 @@ Gem::Specification.new do |s|
 
   s.add_development_dependency 'rake'
   s.add_development_dependency 'rspec', '~> 3.5.0'
+  s.add_development_dependency 'rspec_junit_formatter'
 
   s.files = Dir.glob('lib/**/*') + %w[CHANGELOG.md LICENSE README.md]
   s.require_path = 'lib'
