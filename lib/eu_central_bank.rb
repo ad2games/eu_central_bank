@@ -121,7 +121,6 @@ class EuCentralBank < Money::Bank::VariableExchange
     end
   end
 
-  # rubocop:disable Metrics/MethodLength
   def export_rates(format)
     raise Money::Bank::UnknownRateFormat unless RATE_FORMATS.include? format
 
@@ -129,14 +128,11 @@ class EuCentralBank < Money::Bank::VariableExchange
       case format
       when :json
         JSON.dump(rates)
-      when :ruby
-        Marshal.dump(rates)
       when :yaml
         YAML.dump(rates)
       end
     end
   end
-  # rubocop:enable Metrics/MethodLength
 
   def import_rates(content)
     store.transaction true do
@@ -170,21 +166,15 @@ class EuCentralBank < Money::Bank::VariableExchange
     )
   end
 
-  # rubocop:disable Metrics/MethodLength
   def parse_import(content)
     JSON.parse(content, symbolize_names: true)
   rescue JSON::ParserError
     begin
       YAML.load(content) # rubocop:disable Security/YAMLLoad
     rescue Psych::SyntaxError
-      begin
-        Marshal.load(content)
-      rescue TypeError
-        raise Money::Bank::UnknownRateFormat
-      end
+      raise Money::Bank::UnknownRateFormat
     end
   end
-  # rubocop:enable Metrics/MethodLength
 
   def parse_xml(io)
     parser_document = XmlParser.new

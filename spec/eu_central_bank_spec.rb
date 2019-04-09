@@ -223,13 +223,6 @@ describe EuCentralBank do
       expect(bank.store.__send__(:index)).to eq(other_bank.store.__send__(:index))
     end
 
-    it 're-imports Marshalled ruby' do
-      raw_rates = bank.export_rates(:ruby)
-      other_bank.import_rates(raw_rates)
-
-      expect(bank.store.__send__(:index)).to eq(other_bank.store.__send__(:index))
-    end
-
     it 're-imports YAML' do
       raw_rates = bank.export_rates(:yaml)
       other_bank.import_rates(raw_rates)
