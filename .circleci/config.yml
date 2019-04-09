@@ -27,6 +27,15 @@ jobs:
           paths:
             - vendor/bundle
 
+  lint:
+    docker: *docker
+
+    steps:
+      - attach_workspace:
+          at: .
+
+      - run: bundle exec rake rubocop
+
   test:
     docker: *docker
     steps:
