@@ -1,6 +1,8 @@
-# Warning
+### Warning
 
-This gem was froked from [eu_central_bank](https://github.com/RubyMoney/eu_central_bank/) gem. It contains opinionated changes like:
+This gem was forked from [eu_central_bank](https://github.com/RubyMoney/eu_central_bank/) gem.
+
+#### What is different in this version?
 
 * speedup xml parsing
 * add historical data endpoint (from 1999 on)

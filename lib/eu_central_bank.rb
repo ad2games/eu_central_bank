@@ -14,7 +14,10 @@ class EuCentralBank < Money::Bank::VariableExchange
   ECB_90_DAY_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist-90d.xml'.freeze
   ECB_ALL_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.xml'.freeze
 
-  def initialize(store = Money::RatesStore::StoreWithHistoricalDataSupport.new, currencies: EuCentralBank::CURRENCIES, &block)
+  def initialize(store = nil, currencies: nil, &block)
+    store      ||= Money::RatesStore::StoreWithHistoricalDataSupport.new
+    currencies ||= EuCentralBank::CURRENCIES
+
     super(store, &block)
 
     @requested_currencies = currencies
@@ -121,20 +124,9 @@ class EuCentralBank < Money::Bank::VariableExchange
     end
   end
 
-  def import_rates(format, content)
-    raise Money::Bank::UnknownRateFormat unless RATE_FORMATS.include? format
-
+  def import_rates(content)
     store.transaction true do
-      data = case format
-             when :json
-               JSON.parse(content, symbolize_names: true)
-             when :ruby
-               Marshal.load(content)
-             when :yaml
-               YAML.load(content)
-      end
-
-      data.each do |date, exchange_rates|
+      parse_content(content).each do |date, exchange_rates|
         exchange_rates.each do |exchange_rate|
           store.add_rate(
             exchange_rate.fetch(:from),
@@ -149,10 +141,26 @@ class EuCentralBank < Money::Bank::VariableExchange
     self
   end
 
+  def parse_content(content)
+    JSON.parse(content, symbolize_names: true)
+  rescue JSON::ParserError
+    begin
+      YAML.load(content)
+    rescue Psych::SyntaxError
+      begin
+        Marshal.load(content)
+      rescue TypeError
+        raise Money::Bank::UnknownRateFormat
+      end
+    end
+  end
+
   def check_currency_available(currency)
     currency_string = currency.to_s
+
     return true if currency_string == 'EUR'
     return true if CURRENCIES.include?(currency_string)
+
     raise Errors::CurrencyUnavailable, "No rates available for #{currency_string}"
   end
 
