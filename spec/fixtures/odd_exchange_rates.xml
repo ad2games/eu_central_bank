@@ -11,11 +11,8 @@
 			<Cube currency='BGN' rate='5'/>
 			<Cube currency='CZK' rate='7'/>
 			<Cube currency='DKK' rate='9'/>
-			<Cube currency='EEK' rate='11'/>
 			<Cube currency='GBP' rate='13'/>
 			<Cube currency='HUF' rate='15'/>
-			<Cube currency='LTL' rate='17'/>
-			<Cube currency='LVL' rate='19'/>
 			<Cube currency='PLN' rate='21'/>
 			<Cube currency='RON' rate='23'/>
 			<Cube currency='SEK' rate='25'/>

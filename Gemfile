@@ -1,7 +1,8 @@
+# frozen_string_literal: true
+
 source 'https://rubygems.org'
 
 gemspec
 
-group :test do
-  gem 'rake', '< 11.0'
-end
+gem 'rubocop-ci', github: 'ad2games/rubocop-ci'
+gem 'simplecov', require: false

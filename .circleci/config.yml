@@ -1,0 +1,92 @@
+version: 2
+jobs:
+  setup:
+    docker: &docker
+      - image: circleci/ruby:2.5.3-node
+        environment:
+          BUNDLE_PATH: vendor/bundle
+
+    steps:
+      - checkout
+
+      - run:
+          name: Check if Ruby versions match
+          command: test "$(ruby -v | grep -oP '\d\.\d\.\d')" = "$(cat .ruby-version)"
+
+      - restore_cache:
+          keys:
+            - gem-cache-{{ checksum "eu_central_bank.gemspec" }}
+
+      - run:
+          name: Install dependencies
+          command: bundle check || bundle install --jobs=4 --retry=3
+
+      - save_cache:
+          key: gem-cache-{{ checksum "eu_central_bank.gemspec" }}
+          paths:
+            - vendor/bundle
+
+      - persist_to_workspace:
+          root: .
+          paths:
+            - .
+
+  lint:
+    docker: *docker
+
+    steps:
+      - attach_workspace:
+          at: .
+
+      - run: bundle exec rake rubocop
+
+  test:
+    docker: *docker
+
+    steps:
+      - attach_workspace:
+          at: .
+
+      - run:
+          name: run tests
+          command: |
+            mkdir /tmp/test-results
+
+            bundle exec rspec \
+              --format progress \
+              --format RspecJunitFormatter \
+              --out /tmp/test-results/rspec.xml \
+              --format progress
+
+      - store_test_results:
+          path: /tmp/test-results
+
+workflows:
+  version: 2
+  lint-and-test:
+    jobs:
+      - setup
+      - lint:
+          requires:
+            - setup
+      - test:
+          requires:
+            - setup
+
+  nightly:
+    triggers:
+      - schedule:
+          cron: "0 0 * * 2"
+          filters:
+            branches:
+              only:
+                - master
+
+    jobs:
+      - setup
+      - lint:
+          requires:
+            - setup
+      - test:
+          requires:
+            - setup

@@ -1,73 +1,73 @@
+# frozen_string_literal: true
+
 require 'open-uri'
 require 'nokogiri'
 require 'money'
 require 'money/rates_store/store_with_historical_data_support'
+require 'eu_central_bank/errors'
+require 'eu_central_bank/xml_parser'
 
-class InvalidCache < StandardError ; end
-
-class CurrencyUnavailable < StandardError; end
-
+# rubocop:disable Metrics/ClassLength
 class EuCentralBank < Money::Bank::VariableExchange
-
   attr_accessor :last_updated
   attr_accessor :rates_updated_at
-  attr_accessor :historical_last_updated
-  attr_accessor :historical_rates_updated_at
 
-  SERIALIZER_DATE_SEPARATOR = '_AT_'
+  CURRENCIES = %w[USD JPY BGN CZK DKK GBP HUF ILS ISK PLN RON SEK CHF NOK HRK RUB TRY AUD BRL CAD
+                  CNY HKD IDR INR KRW MXN MYR NZD PHP SGD THB ZAR].map(&:freeze).freeze
+  ECB_RATES_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'
+  ECB_90_DAY_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist-90d.xml'
+  ECB_ALL_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.xml'
 
-  CURRENCIES = %w(USD JPY BGN CZK DKK GBP HUF ILS ISK PLN RON SEK CHF NOK HRK RUB TRY AUD BRL CAD CNY HKD IDR INR KRW MXN MYR NZD PHP SGD THB ZAR).map(&:freeze).freeze
-  ECB_RATES_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'.freeze
-  ECB_90_DAY_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist-90d.xml'.freeze
+  def initialize(store = nil, currencies: nil, &block)
+    store      ||= Money::RatesStore::StoreWithHistoricalDataSupport.new
+    currencies ||= EuCentralBank::CURRENCIES
 
-  def initialize(st = Money::RatesStore::StoreWithHistoricalDataSupport.new, &block)
-    super
+    super(store, &block)
+
+    @requested_currencies = currencies
     @currency_string = nil
   end
 
-  def update_rates(cache=nil)
-    update_parsed_rates(doc(cache))
+  def update_exchange_rates(timeframe: nil, file: nil)
+    update_parsed_rates(
+      parse_xml(
+        open(file ? file : url_for_timeframe(timeframe))
+      )
+    )
   end
 
-  def update_historical_rates(cache=nil)
-    update_parsed_historical_rates(doc(cache, ECB_90_DAY_URL))
-  end
-
-  def save_rates(cache, url=ECB_RATES_URL)
-    raise InvalidCache unless cache
-    File.open(cache, "w") do |file|
-      io = open(url);
-      io.each_line { |line| file.puts line }
+  def url_for_timeframe(timeframe)
+    case timeframe
+    when :current
+      ECB_RATES_URL
+    when :last_90_days
+      ECB_90_DAY_URL
+    when :all
+      ECB_ALL_URL
+    else
+      raise Errors::InvalidTimeframe, 'Please use :current, :last_90_days or :all'
     end
   end
 
-  def update_rates_from_s(content)
-    update_parsed_rates(doc_from_s(content))
-  end
-
-  def save_rates_to_s(url=ECB_RATES_URL)
-    open(url).read
-  end
-
-  def exchange(cents, from_currency, to_currency, date=nil)
+  def exchange(cents, from_currency, to_currency, date)
     exchange_with(Money.new(cents, from_currency), to_currency, date)
   end
 
-  def exchange_with(from, to_currency, date=nil)
-    from_base_rate, to_base_rate = nil, nil
+  # rubocop:disable Metrics/MethodLength
+  def exchange_with(from, to_currency, date)
+    from_base_rate = nil
+    to_base_rate = nil
     rate = get_rate(from.currency, to_currency, date)
 
     unless rate
       store.transaction true do
-        from_base_rate = get_rate("EUR", from.currency.to_s, date)
-        to_base_rate = get_rate("EUR", to_currency, date)
+        from_base_rate = get_rate('EUR', from.currency.to_s, date)
+        to_base_rate = get_rate('EUR', to_currency, date)
       end
 
       unless from_base_rate && to_base_rate
-        message = "No conversion rate known for '#{from.currency.iso_code}' -> '#{to_currency}'"
-        message << " on #{date.to_s}" if date
-
-        raise Money::Bank::UnknownRate, message
+        raise Money::Bank::UnknownRate, 'No conversion rate known for ' \
+          "'#{from.currency.iso_code}' -> '#{to_currency}' on #{date}"
       end
 
       rate = to_base_rate / from_base_rate
@@ -75,78 +75,71 @@ class EuCentralBank < Money::Bank::VariableExchange
 
     calculate_exchange(from, to_currency, rate)
   end
+  # rubocop:enable Metrics/MethodLength
 
-  def get_rate(from, to, date = nil)
+  def get_rate(from, to, date)
     return 1 if from == to
 
     check_currency_available(from)
     check_currency_available(to)
 
-    if date.is_a?(Hash)
-      # Backwards compatibility for the opts hash
-      date = date[:date]
-    end
+    # Backwards compatibility for the opts hash
+    date = date[:date] if date.is_a?(Hash)
 
-    store.get_rate(::Money::Currency.wrap(from).iso_code, ::Money::Currency.wrap(to).iso_code, date)
+    store.get_rate(
+      ::Money::Currency.wrap(from).iso_code,
+      ::Money::Currency.wrap(to).iso_code,
+      date
+    )
   end
 
-  def set_rate(from, to, rate, date = nil)
-    if date.is_a?(Hash)
-      # Backwards compatibility for the opts hash
-      date = date[:date]
-    end
-    store.add_rate(::Money::Currency.wrap(from).iso_code, ::Money::Currency.wrap(to).iso_code, rate, date)
+  def set_rate(from, to, rate, date)
+    # Backwards compatibility for the opts hash
+    date = date[:date] if date.is_a?(Hash)
+
+    store.add_rate(
+      ::Money::Currency.wrap(from).iso_code,
+      ::Money::Currency.wrap(to).iso_code,
+      rate,
+      date
+    )
   end
 
   def rates
-    store.each_rate.each_with_object({}) do |(from,to,rate,date),hash|
-      key = [from, to].join(SERIALIZER_SEPARATOR)
-      key = [key, date.to_s].join(SERIALIZER_DATE_SEPARATOR) if date
-      hash[key] = rate
+    store.each_rate.each_with_object({}) do |(from, to, rate, date), hash|
+      hash[date] ||= []
+      hash[date] << { from: from, to: to, rate: rate }
     end
   end
 
-  def export_rates(format, file = nil, opts = {})
-    raise Money::Bank::UnknownRateFormat unless
-      RATE_FORMATS.include? format
+  def save_rates(file_path, url = ECB_RATES_URL)
+    raise Errors::InvalidFilePath unless file_path
+
+    File.open(file_path, 'w') do |file|
+      io = open(url)
+      io.each_line { |line| file.puts line }
+    end
+  end
+
+  def export_rates(format)
+    raise Money::Bank::UnknownRateFormat unless RATE_FORMATS.include? format
 
     store.transaction true do
-      s = case format
+      case format
       when :json
         JSON.dump(rates)
-      when :ruby
-        Marshal.dump(rates)
       when :yaml
         YAML.dump(rates)
       end
-
-      unless file.nil?
-        File.open(file, "w") {|f| f.write(s) }
-      end
-
-      s
     end
   end
 
-  def import_rates(format, s, opts = {})
-    raise Money::Bank::UnknownRateFormat unless
-      RATE_FORMATS.include? format
-
+  def import_rates(content)
     store.transaction true do
-      data = case format
-       when :json
-         JSON.load(s)
-       when :ruby
-         Marshal.load(s)
-       when :yaml
-         YAML.load(s)
-       end
-
-      data.each do |key, rate|
-        from, to = key.split(SERIALIZER_SEPARATOR)
-        to, date = to.split(SERIALIZER_DATE_SEPARATOR)
-
-        store.add_rate from, to, BigDecimal(rate), date
+      parse_import(content).each do |date, exchange_rates|
+        exchange_rates.each do |exchange_rate|
+          update_store(exchange_rate, date)
+        end
       end
     end
 
@@ -155,58 +148,54 @@ class EuCentralBank < Money::Bank::VariableExchange
 
   def check_currency_available(currency)
     currency_string = currency.to_s
-    return true if currency_string == "EUR"
+
+    return true if currency_string == 'EUR'
     return true if CURRENCIES.include?(currency_string)
-    raise CurrencyUnavailable, "No rates available for #{currency_string}"
+
+    raise Errors::CurrencyUnavailable, "No rates available for #{currency_string}"
   end
 
   protected
 
-  def doc(cache, url=ECB_RATES_URL)
-    rates_source = !!cache ? cache : url
-    Nokogiri::XML(open(rates_source)).tap { |doc| doc.xpath('gesmes:Envelope/xmlns:Cube/xmlns:Cube//xmlns:Cube') }
-  rescue Nokogiri::XML::XPath::SyntaxError
-    Nokogiri::XML(open(url))
+  def update_store(exchange_rate, date)
+    store.add_rate(
+      exchange_rate.fetch(:from),
+      exchange_rate.fetch(:to),
+      BigDecimal(exchange_rate.fetch(:rate)),
+      date
+    )
   end
 
-  def doc_from_s(content)
-    Nokogiri::XML(content)
+  def parse_import(content)
+    JSON.parse(content, symbolize_names: true)
+  rescue JSON::ParserError
+    begin
+      YAML.load(content) # rubocop:disable Security/YAMLLoad
+    rescue Psych::SyntaxError
+      raise Money::Bank::UnknownRateFormat
+    end
   end
 
-  def update_parsed_rates(doc)
-    rates = doc.xpath('gesmes:Envelope/xmlns:Cube/xmlns:Cube//xmlns:Cube')
+  def parse_xml(io)
+    parser_document = XmlParser.new
+    parser = Nokogiri::XML::SAX::Parser.new(parser_document)
+    parser.parse(io)
+    parser_document
+  end
 
+  def update_parsed_rates(parsed_xml)
     store.transaction true do
-      rates.each do |exchange_rate|
-        rate = BigDecimal(exchange_rate.attribute("rate").value)
-        currency = exchange_rate.attribute("currency").value
-        set_rate("EUR", currency, rate)
+      parsed_xml.rates.each do |date, exchange_rates|
+        exchange_rates.each do |currency, exchange_rate|
+          next unless @requested_currencies.include?(currency)
+
+          set_rate('EUR', currency, BigDecimal(exchange_rate), date)
+        end
       end
-      set_rate("EUR", "EUR", 1)
     end
 
-    rates_updated_at = doc.xpath('gesmes:Envelope/xmlns:Cube/xmlns:Cube/@time').first.value
-    @rates_updated_at = Time.parse(rates_updated_at)
-
+    @rates_updated_at = parsed_xml.updated_at
     @last_updated = Time.now
-  end
-
-  def update_parsed_historical_rates(doc)
-    rates = doc.xpath('gesmes:Envelope/xmlns:Cube/xmlns:Cube//xmlns:Cube')
-
-    store.transaction true do
-      rates.each do |exchange_rate|
-        rate = BigDecimal(exchange_rate.attribute("rate").value)
-        currency = exchange_rate.attribute("currency").value
-        date = exchange_rate.parent.attribute("time").value
-        set_rate("EUR", currency, rate, date)
-      end
-    end
-
-    rates_updated_at = doc.xpath('gesmes:Envelope/xmlns:Cube/xmlns:Cube/@time').first.value
-    @historical_rates_updated_at = Time.parse(rates_updated_at)
-
-    @historical_last_updated = Time.now
   end
 
   private
@@ -219,3 +208,4 @@ class EuCentralBank < Money::Bank::VariableExchange
     Money.new(money, to_currency)
   end
 end
+# rubocop:enable Metrics/ClassLength
